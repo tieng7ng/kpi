@@ -1,0 +1,72 @@
+[
+    {
+        "date": "2024-01-01",
+        "revenue": 125000.50,
+        "margin": 15.5,
+        "orders": 342,
+        "category": "Ventes"
+    },
+    {
+        "date": "2024-01-02",
+        "revenue": 132000.75,
+        "margin": 18.2,
+        "orders": 389,
+        "category": "Ventes"
+    },
+    {
+        "date": "2024-01-03",
+        "revenue": 118500.00,
+        "margin": 14.8,
+        "orders": 325,
+        "category": "Ventes"
+    },
+    {
+        "date": "2024-01-04",
+        "revenue": 145000.25,
+        "margin": 19.5,
+        "orders": 412,
+        "category": "Ventes"
+    },
+    {
+        "date": "2024-01-05",
+        "revenue": 138000.00,
+        "margin": 17.3,
+        "orders": 378,
+        "category": "Ventes"
+    },
+    {
+        "date": "2024-01-06",
+        "revenue": 95000.50,
+        "margin": 12.1,
+        "orders": 268,
+        "category": "Ventes"
+    },
+    {
+        "date": "2024-01-07",
+        "revenue": 88000.00,
+        "margin": 11.5,
+        "orders": 245,
+        "category": "Ventes"
+    },
+    {
+        "date": "2024-01-08",
+        "revenue": 152000.75,
+        "margin": 20.8,
+        "orders": 445,
+        "category": "Ventes"
+    },
+    {
+        "date": "2024-01-09",
+        "revenue": 148000.00,
+        "margin": 19.2,
+        "orders": 421,
+        "category": "Ventes"
+    },
+    {
+        "date": "2024-01-10",
+        "revenue": 141000.50,
+        "margin": 18.6,
+        "orders": 398,
+        "category": "Ventes"
+    }
+]

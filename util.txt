@@ -1,0 +1,14 @@
+
+
+Lancer le frontend
+  cd kpi-analyzer-monorepo/electron-app 
+  npm run dev
+
+Lancer le backend
+  cd /Users/tiengd/Documents/tuto/kpi/kpi-analyzer-monorepo/python-engine
+  source .venv/bin/activate
+  python main.py
+
+Requete SQL
+  python query_db.py "SELECT * FROM unified_kpi LIMIT 5"
+
