@@ -1,16 +1,26 @@
-import { app, BrowserWindow } from 'electron'
 import path from 'node:path'
 import { spawn, ChildProcess } from 'node:child_process'
 
-import { fileURLToPath } from 'node:url'
+// Force CJS require pattern for Electron to avoid TS ESM interop issues
+const electron = require('electron')
+const app = electron.app
+const BrowserWindow = electron.BrowserWindow
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+// In CommonJS, __dirname is available globally.
+// However, since we are in a .ts file, we might need to rely on standard node types.
+// If valid CJS, we don't need fileURLToPath logic.
+
+let win: any
+let pythonProcess: ChildProcess | null = null
 
 process.env.DIST = path.join(__dirname, '../dist')
-process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(process.env.DIST, '../public')
+// Bypass app.isPackaged check to avoid crash if app is undefined
+// We are in dev mode anyway.
+process.env.VITE_PUBLIC = path.join(process.env.DIST, '../public')
 
-let win: BrowserWindow | null
-let pythonProcess: ChildProcess | null = null
+// Print electron debug again
+console.log('Electron require type:', typeof electron)
+console.log('Electron keys:', Object.keys(electron))
 
 // 🚧 Use ['npm', 'run', 'start'] for dev, or the executable for prod
 const PY_DIST_FOLDER = 'python-engine' // TODO: Adjust for production packaging
@@ -19,11 +29,13 @@ const PY_MODULE = 'main' // main.py
 const startPythonSubprocess = () => {
     if (app.isPackaged) {
         // In production, we assume an executable exists
-        const executablePath = path.join((process as any).resourcesPath, 'engine') // 'engine' on mac/linux, 'engine.exe' might need detection on windows but pyinstaller handles name
-        // On Mac it might be just 'engine'. On Windows 'engine.exe'. 
-        // Electron builder copies it to resources.
+        // On Windows: 'engine.exe', on Mac/Linux: 'engine'
+        const isWindows = process.platform === 'win32'
+        const executableName = isWindows ? 'engine.exe' : 'engine'
+        const executablePath = path.join((process as any).resourcesPath, executableName)
 
         console.log(`Production mode: Starting engine from ${executablePath}`)
+        console.log(`Platform: ${process.platform}`)
         pythonProcess = spawn(executablePath, ['8000'])
     } else {
         // In dev, we run python directly

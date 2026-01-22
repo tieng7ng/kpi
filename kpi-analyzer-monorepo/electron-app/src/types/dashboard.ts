@@ -1,15 +1,17 @@
-export type ChartType = 'line' | 'bar' | 'area' | 'pie';
+export type ChartType = 'line' | 'bar' | 'pie' | 'area' | 'composed';
 
 export interface ChartConfig {
     id: string;
-    title: string;
     type: ChartType;
-    indicator: string; // Ex: 'revenue'
-    categories: string[]; // Ex: ['Nord', 'Sud'] (Remplacera 'kpis')
-    period: '7d' | '30d' | '90d' | 'year' | 'custom';
+    title: string;
+    indicator: string; // e.g. 'montant_net_ht'
+    categories: string[]; // e.g. ['FR', 'DE'] for grouping, or just ['Global']
+    color?: string; // Legacy single color
+    formatter?: 'currency' | 'number' | 'percent';
+    period?: string;
     startDate?: string;
     endDate?: string;
-    color?: string;
+    kpis?: string[]; // Legacy support
 }
 
 export interface DashboardLayout {

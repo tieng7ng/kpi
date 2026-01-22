@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { DropZone } from './DropZone';
-import { ArrowLeft, FileSpreadsheet, HardDrive, Calendar, FileText, Trash2, Download } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, HardDrive, Calendar, FileText, Trash2, Download, RotateCcw, AlertTriangle } from 'lucide-react';
 
 const API_URL = 'http://localhost:8000/api';
 
@@ -19,6 +19,8 @@ interface DataPageProps {
 export const DataPage: React.FC<DataPageProps> = ({ onBack }) => {
     const [files, setFiles] = useState<ImportedFile[]>([]);
     const [loading, setLoading] = useState(false);
+    const [showResetConfirm, setShowResetConfirm] = useState(false);
+    const [resetting, setResetting] = useState(false);
 
     const fetchFiles = async () => {
         setLoading(true);
@@ -32,6 +34,26 @@ export const DataPage: React.FC<DataPageProps> = ({ onBack }) => {
             console.error("Erreur chargement fichiers", e);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleReset = async () => {
+        setResetting(true);
+        try {
+            const res = await fetch(`${API_URL}/reset`, { method: 'POST' });
+            if (res.ok) {
+                // Vider le localStorage du dashboard
+                localStorage.removeItem('kpi_dashboard_layout');
+                // Rafraîchir la liste des fichiers
+                setFiles([]);
+                // Notifier le dashboard
+                window.dispatchEvent(new CustomEvent('kpi-data-updated'));
+            }
+        } catch (e) {
+            console.error("Erreur réinitialisation", e);
+        } finally {
+            setResetting(false);
+            setShowResetConfirm(false);
         }
     };
 
@@ -120,7 +142,54 @@ export const DataPage: React.FC<DataPageProps> = ({ onBack }) => {
                         </div>
                     )}
                 </section>
+
+                <section className="pt-4 border-t border-gray-200">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-lg font-semibold text-gray-800">Réinitialiser les données</h3>
+                            <p className="text-sm text-gray-500">Supprimer tous les fichiers et KPIs pour repartir de zéro.</p>
+                        </div>
+                        <button
+                            onClick={() => setShowResetConfirm(true)}
+                            disabled={files.length === 0}
+                            className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <RotateCcw size={18} />
+                            Réinitialiser
+                        </button>
+                    </div>
+                </section>
             </main>
+
+            {showResetConfirm && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-xl p-6 max-w-md mx-4 shadow-xl">
+                        <div className="flex items-center gap-3 text-amber-600 mb-4">
+                            <AlertTriangle size={24} />
+                            <h3 className="text-lg font-semibold">Confirmer la réinitialisation</h3>
+                        </div>
+                        <p className="text-gray-600 mb-6">
+                            Cette action supprimera <strong>tous les fichiers importés</strong> et <strong>toutes les données KPI</strong>.
+                            Cette action est irréversible.
+                        </p>
+                        <div className="flex gap-3 justify-end">
+                            <button
+                                onClick={() => setShowResetConfirm(false)}
+                                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                onClick={handleReset}
+                                disabled={resetting}
+                                className="px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                {resetting ? 'Suppression...' : 'Supprimer tout'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

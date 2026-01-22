@@ -5,7 +5,16 @@ from api import endpoints
 import uvicorn
 import sys
 
-app = FastAPI(title="KPI Analyzer Engine")
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initialize DB
+    init_db()
+    yield
+    # Shutdown: Clean up if needed (nothing for now)
+
+app = FastAPI(title="KPI Analyzer Engine", lifespan=lifespan)
 
 # CORS - Allow localhost for Electron
 app.add_middleware(
@@ -15,11 +24,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Initialize DB on startup
-@app.on_event("startup")
-def on_startup():
-    init_db()
 
 app.include_router(endpoints.router, prefix="/api")
 

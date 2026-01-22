@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { X, Maximize2, Minimize2, TrendingUp, TrendingDown, Activity } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, Activity } from 'lucide-react';
 import { KPIChart } from '../KPIChart';
 import type { ChartConfig } from '../../types/dashboard';
 
@@ -72,8 +72,9 @@ export const ChartDetailModal: React.FC<ChartDetailModalProps> = ({ isOpen, onCl
                         <KPIChart
                             data={data}
                             type={config.type}
-                            color={config.color}
+                            colors={config.color ? [config.color] : undefined}
                             kpiKeys={config.categories}
+                            title={config.title}
                         />
                     </div>
 

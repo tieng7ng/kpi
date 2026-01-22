@@ -554,29 +554,856 @@ GROUP BY "Num. de bordereau", "Date de récépissé", "Nom du Donneur d'ordre"
 
 ---
 
+## 🖥️ Implémentation dans l'Application
+
+Cette section détaille comment les KPIs Transport sont réellement calculés dans le code de l'application.
+
+### Architecture de Calcul
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          FICHIER CSV IMPORT                              │
+│  extract_377_71_260114_1428 - 2025 ROUTE IMPORT.csv                     │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼ POST /api/upload
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      DÉTECTION AUTOMATIQUE                               │
+│  Fichier : python-engine/api/endpoints.py:44-54                         │
+│                                                                          │
+│  preview = content.decode('utf-8-sig')[:1000]                           │
+│  if "Num. de bordereau" in preview and "Incoterm" in preview:           │
+│      is_transport_file = True                                            │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼ process_transport_file()
+┌─────────────────────────────────────────────────────────────────────────┐
+│                            ETL TRANSPORT                                 │
+│  Fichier : python-engine/ingestion.py                                   │
+│                                                                          │
+│  1. Lecture CSV (UTF-8-sig, séparateur ";")                             │
+│  2. Nettoyage colonnes (BOM, espaces)                                   │
+│  3. Conversion décimaux (virgule → point)                               │
+│  4. CALCUL MARGE BRUTE :                                                │
+│     marge_brute = montant_net_ht - montant_achat_st - cout_interne      │
+│  5. Insertion bulk dans transport_entries                               │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      TABLE: transport_entries                            │
+│  Fichier : python-engine/database/models.py                             │
+│                                                                          │
+│  Colonnes principales stockées :                                         │
+│  - date_recepisse (DateTime, indexé)                                    │
+│  - donneur_ordre (String, indexé)                                       │
+│  - montant_net_ht (Float) ───────────────────▶ CA                       │
+│  - montant_achat_st (Float) ─────────────────▶ Coût sous-traitance      │
+│  - cout_interne (Float) ─────────────────────▶ Coût interne             │
+│  - marge_brute (Float) ──────────────────────▶ CALCULÉ à l'import       │
+│  - poids_kg (Float) ─────────────────────────▶ Poids                    │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Calcul de la Marge Brute (ETL)
+
+**Fichier :** `python-engine/ingestion.py`
+
+**Formule appliquée lors de l'import :**
+
+```python
+marge_brute = montant_net_ht - montant_achat_st - cout_interne
+```
+
+**Exemple concret :**
+```
+Montant Net HT (CA)         = 386,05 €
+Montant achat sous-traitance = 182,32 €
+Coût interne                 =  20,00 €
+─────────────────────────────────────────
+Marge Brute                  = 386,05 - 182,32 - 20,00 = 183,73 €
+```
+
+La marge est **pré-calculée et stockée** dans la colonne `marge_brute` de la table `transport_entries` pour éviter de recalculer à chaque requête.
+
+---
+
+### Endpoint `/api/transport/stats` - KPIs Globaux
+
+**Fichier :** `python-engine/api/endpoints.py:201-227`
+
+**Code SQLAlchemy :**
+```python
+stats = db.query(
+    func.sum(TransportEntry.montant_net_ht).label('ca_total'),
+    func.sum(TransportEntry.marge_brute).label('marge_total'),
+    func.sum(TransportEntry.poids_kg).label('poids_total'),
+    func.count(TransportEntry.id).label('nb_envois')
+).first()
+```
+
+**Requête SQL générée :**
+```sql
+SELECT
+    SUM(montant_net_ht) AS ca_total,
+    SUM(marge_brute) AS marge_total,
+    SUM(poids_kg) AS poids_total,
+    COUNT(id) AS nb_envois
+FROM transport_entries;
+```
+
+**Calculs de transformation (Python) :**
+
+| KPI affiché | Formule Python | Unité |
+|-------------|----------------|-------|
+| **CA Total (revenue)** | `stats.ca_total` | € |
+| **Marge Brute (margin)** | `stats.marge_total` | € |
+| **Tonnage** | `stats.poids_total / 1000.0` | T |
+| **Nb Expéditions (shipments)** | `stats.nb_envois` | envois |
+| **Taux de Marge (margin_rate)** | `(marge_total / ca_total) * 100` | % |
+
+**Réponse JSON :**
+```json
+{
+    "count": 109542,
+    "revenue": 320714.80,
+    "margin": 68539.35,
+    "tonnage": 12345.67,
+    "shipments": 109542,
+    "margin_rate": 21.37
+}
+```
+
+---
+
+### Endpoint `/api/transport/graph/revenue` - Évolution Mensuelle
+
+**Fichier :** `python-engine/api/endpoints.py:229-251`
+
+**Code SQLAlchemy :**
+```python
+results = db.query(
+    func.strftime('%Y-%m', TransportEntry.date_recepisse).label('month'),
+    func.sum(TransportEntry.montant_net_ht).label('revenue'),
+    func.sum(TransportEntry.marge_brute).label('margin')
+).group_by('month').order_by('month').all()
+```
+
+**Requête SQL générée :**
+```sql
+SELECT
+    strftime('%Y-%m', date_recepisse) AS month,
+    SUM(montant_net_ht) AS revenue,
+    SUM(marge_brute) AS margin
+FROM transport_entries
+GROUP BY strftime('%Y-%m', date_recepisse)
+ORDER BY month ASC;
+```
+
+**Explication :**
+- `strftime('%Y-%m', date_recepisse)` : Extrait année-mois (ex: "2024-08")
+- `GROUP BY month` : Agrège CA et Marge par mois
+- `ORDER BY month` : Trie chronologiquement
+
+**Réponse JSON :**
+```json
+[
+    { "name": "2024-08", "revenue": 45678.90, "margin": 9876.54 },
+    { "name": "2024-09", "revenue": 52345.67, "margin": 11234.56 },
+    { "name": "2024-10", "revenue": 48901.23, "margin": 10567.89 }
+]
+```
+
+---
+
+### Endpoint `/api/transport/graph/distribution` - Top 10 Clients
+
+**Fichier :** `python-engine/api/endpoints.py:253-276`
+
+**Paramètre :** `type=client` ou `type=country`
+
+**Code SQLAlchemy (type=client) :**
+```python
+field = TransportEntry.donneur_ordre
+
+results = db.query(
+    field.label('name'),
+    func.sum(TransportEntry.montant_net_ht).label('value')
+).group_by(field).order_by(
+    func.sum(TransportEntry.montant_net_ht).desc()
+).limit(10).all()
+```
+
+**Requête SQL générée :**
+```sql
+SELECT
+    donneur_ordre AS name,
+    SUM(montant_net_ht) AS value
+FROM transport_entries
+GROUP BY donneur_ordre
+ORDER BY SUM(montant_net_ht) DESC
+LIMIT 10;
+```
+
+**Réponse JSON :**
+```json
+[
+    { "name": "BIANCHI TRASPORTI", "value": 160907.39 },
+    { "name": "SALVAT LOGISTICA", "value": 30076.06 },
+    { "name": "LABORATOIRES ASEPTA", "value": 18138.01 }
+]
+```
+
+---
+
+### Calcul du Panier Moyen (Frontend)
+
+**Fichier :** `electron-app/src/components/dashboard/TransportDashboard.tsx:74`
+
+Ce calcul est effectué **côté frontend** car il dépend de deux valeurs déjà récupérées :
+
+```typescript
+const panierMoyen = stats.revenue / (stats.shipments || 1);
+```
+
+**Formule :** `CA Total ÷ Nombre d'expéditions`
+
+**Exemple :** `320 714,80 € ÷ 109 542 = 2,93 €`
+
+---
+
+### Formatage des Valeurs (Frontend)
+
+**Fichier :** `electron-app/src/components/dashboard/TransportDashboard.tsx`
+
+**Montants en euros (cards) :**
+```typescript
+new Intl.NumberFormat('fr-FR', {
+    style: 'currency',
+    currency: 'EUR'
+}).format(stats.revenue)
+// Résultat: "320 714,80 €"
+```
+
+**Valeurs en k€ (graphiques) :**
+```typescript
+formatter={(val) => `${(Number(val) / 1000).toFixed(0)}k€`}
+// Résultat: "321k€"
+```
+
+**Tonnage :**
+```typescript
+`${stats.tonnage.toFixed(0)} T`
+// Résultat: "12 346 T"
+```
+
+**Taux de marge :**
+```typescript
+`${stats.margin_rate.toFixed(1)}% du CA`
+// Résultat: "21.4% du CA"
+```
+
+---
+
+### Schéma Récapitulatif des Calculs
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        TABLE: transport_entries                          │
+│                                                                          │
+│  Colonnes stockées :                                                     │
+│  ┌──────────────────┬────────────────────┬──────────────────────────┐   │
+│  │ montant_net_ht   │ montant_achat_st   │ cout_interne │ poids_kg │   │
+│  │      (CA)        │    (Coût ST)       │  (Interne)   │  (Poids) │   │
+│  └────────┬─────────┴──────────┬─────────┴──────┬───────┴────┬─────┘   │
+│           │                    │                │            │          │
+│           │    CALCUL ETL      │                │            │          │
+│           │         ▼          │                │            │          │
+│           │  ┌─────────────────┴────────────────┴─┐          │          │
+│           │  │ marge_brute = CA - ST - Interne    │          │          │
+│           │  └─────────────────┬──────────────────┘          │          │
+│           │                    │                             │          │
+└───────────┼────────────────────┼─────────────────────────────┼──────────┘
+            │                    │                             │
+            ▼                    ▼                             ▼
+┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐
+│ /transport/stats  │  │ /transport/graph  │  │ /transport/graph  │
+│                   │  │    /revenue       │  │  /distribution    │
+├───────────────────┤  ├───────────────────┤  ├───────────────────┤
+│ SUM(montant_net)  │  │ GROUP BY mois     │  │ GROUP BY client   │
+│ SUM(marge_brute)  │  │ SUM(montant_net)  │  │ SUM(montant_net)  │
+│ SUM(poids_kg)     │  │ SUM(marge_brute)  │  │ ORDER BY DESC     │
+│ COUNT(*)          │  │                   │  │ LIMIT 10          │
+├───────────────────┤  ├───────────────────┤  ├───────────────────┤
+│ + Calculs Python: │  │                   │  │                   │
+│ tonnage = poids   │  │                   │  │                   │
+│          / 1000   │  │                   │  │                   │
+│ margin_rate =     │  │                   │  │                   │
+│  marge/CA × 100   │  │                   │  │                   │
+└───────────────────┘  └───────────────────┘  └───────────────────┘
+         │                      │                      │
+         ▼                      ▼                      ▼
+┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐
+│   4 StatsCards    │  │  ComposedChart    │  │    BarChart       │
+│ CA, Marge, Volume │  │  Barres + Ligne   │  │  Top 10 Clients   │
+│ Panier Moyen      │  │                   │  │                   │
+└───────────────────┘  └───────────────────┘  └───────────────────┘
+```
+
+---
+
+### Fichiers Sources de l'Implémentation
+
+| Composant | Fichier | Lignes clés |
+|-----------|---------|-------------|
+| Modèle BDD | `python-engine/database/models.py` | 38-91 |
+| ETL Import | `python-engine/ingestion.py` | Tout le fichier |
+| Endpoint Stats | `python-engine/api/endpoints.py` | 201-227 |
+| Endpoint Revenue | `python-engine/api/endpoints.py` | 229-251 |
+| Endpoint Distribution | `python-engine/api/endpoints.py` | 253-276 |
+| Dashboard Frontend | `electron-app/src/components/dashboard/TransportDashboard.tsx` | Tout le fichier |
+| Composant Graphique | `electron-app/src/components/KPIChart.tsx` | Tout le fichier |
+
+---
+
+## 🔧 Propositions : Filtres Configurables pour le CA
+
+Cette section présente les propositions d'interface et d'implémentation pour filtrer le Chiffre d'Affaires par **période** et par **clients**.
+
+---
+
+### Proposition 1 : Interface Utilisateur
+
+#### 1.1 Maquette du Panneau de Filtres
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  🔧 FILTRES                                                    [Réinitialiser] │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  📅 PÉRIODE                                                                  │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Date début: [  01/01/2025  📅 ]    Date fin: [  31/12/2025  📅 ]   │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  Raccourcis:  [ 7j ] [ 30j ] [ 90j ] [ Cette année ] [ Tout ]              │
+│                                                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  👥 CLIENTS (Donneurs d'ordre)                      [ ✓ Tous ] [ ✗ Aucun ] │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  🔍 Rechercher un client...                                         │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  [✓] BIANCHI TRASPORTI                              160 907 €       │   │
+│  │  [✓] SALVAT LOGISTICA                                30 076 €       │   │
+│  │  [✓] LABORATOIRES ASEPTA                             18 138 €       │   │
+│  │  [ ] TRANSPORT MARTIN                                12 450 €       │   │
+│  │  [✓] LOGISTIQUE EXPRESS                               9 234 €       │   │
+│  │  [ ] FRET INTERNATIONAL                               8 567 €       │   │
+│  │  ...                                                                │   │
+│  │  (Afficher plus ▼)                                                  │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  📊 Sélection: 42 clients sur 156  │  CA filtré: 245 890 €                 │
+│                                                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│                    [ Appliquer les filtres ]                                │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 1.2 Spécification Retenue : Icône sur la Card "Chiffre d'Affaires"
+
+**Principe :** Une icône de filtre (⚙️ ou 🔧) est placée en haut à droite de la card "Chiffre d'Affaires". Au clic, une popup/modal s'ouvre avec les options de filtrage.
+
+---
+
+**Étape 1 : Card avec icône de filtre**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         DASHBOARD TRANSPORT                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌───────────────────┐  ┌───────────────┐  ┌───────────────┐  ┌──────────┐ │
+│  │ Chiffre d'Affaires│  │               │  │               │  │          │ │
+│  │              [⚙️]◀──── ICÔNE FILTRE  │  │               │  │          │ │
+│  │                   │  │  Marge Brute  │  │    Tonnage    │  │  Panier  │ │
+│  │   2 941 131 €     │  │   681 392 €   │  │   9 183 T     │  │   244 €  │ │
+│  │                   │  │   23,2% du CA │  │  12 057 exp.  │  │          │ │
+│  └───────────────────┘  └───────────────┘  └───────────────┘  └──────────┘ │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Détail de la card "Chiffre d'Affaires" :**
+
+```
+┌─────────────────────────────────────┐
+│  Chiffre d'Affaires           [⚙️] │◀── Icône cliquable (hover: couleur)
+├─────────────────────────────────────┤
+│                                     │
+│         2 941 131 €                 │◀── Valeur principale (filtrée)
+│                                     │
+│  📅 Tout  │  👥 156/156 clients     │◀── Résumé des filtres actifs
+│                                     │
+└─────────────────────────────────────┘
+```
+
+---
+
+**Étape 2 : Clic sur l'icône → Ouverture de la Popup**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         DASHBOARD TRANSPORT                                  │
+├───────────────────────────────────────────────────────────────────────────  │
+│                                                                              │
+│  ┌───────────────────┐                                                      │
+│  │ Chiffre d'Affaires│                                                      │
+│  │              [⚙️]─┼────────────────────────────────────────┐             │
+│  │   2 941 131 €     │                                        │             │
+│  └───────────────────┘                                        ▼             │
+│                              ┌─────────────────────────────────────────────┐│
+│                              │  🔧 FILTRES CA                         [✕]  ││
+│                              ├─────────────────────────────────────────────┤│
+│                              │                                             ││
+│                              │  📅 PÉRIODE                                 ││
+│                              │  ┌─────────────────────────────────────┐   ││
+│                              │  │ Début: [ 01/01/2025 📅 ]            │   ││
+│                              │  │ Fin:   [ 31/12/2025 📅 ]            │   ││
+│                              │  └─────────────────────────────────────┘   ││
+│                              │                                             ││
+│                              │  [ 7j ] [ 30j ] [ 90j ] [ Année ] [ Tout ] ││
+│                              │                                             ││
+│                              ├─────────────────────────────────────────────┤│
+│                              │                                             ││
+│                              │  👥 CLIENTS          [ ✓ Tous ] [ ✗ Aucun ]││
+│                              │  ┌─────────────────────────────────────┐   ││
+│                              │  │ 🔍 Rechercher...                    │   ││
+│                              │  └─────────────────────────────────────┘   ││
+│                              │  ┌─────────────────────────────────────┐   ││
+│                              │  │ [✓] BIANCHI TRASPORTI    160 907 €  │   ││
+│                              │  │ [✓] SALVAT LOGISTICA      30 076 €  │   ││
+│                              │  │ [✓] LABORATOIRES ASEPTA   18 138 €  │   ││
+│                              │  │ [ ] TRANSPORT MARTIN      12 450 €  │   ││
+│                              │  │ ...                                 │   ││
+│                              │  └─────────────────────────────────────┘   ││
+│                              │                                             ││
+│                              │  📊 42/156 clients │ CA filtré: 245 890 €  ││
+│                              │                                             ││
+│                              ├─────────────────────────────────────────────┤│
+│                              │  [ Réinitialiser ]      [ Appliquer ]      ││
+│                              └─────────────────────────────────────────────┘│
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+**Étape 3 : Après application des filtres**
+
+```
+┌─────────────────────────────────────┐
+│  Chiffre d'Affaires           [⚙️] │◀── Icône avec indicateur (point coloré)
+├─────────────────────────────────────┤
+│                                     │
+│          245 890 €                  │◀── Valeur recalculée avec filtres
+│                                     │
+│  📅 01/01 → 30/06  │  👥 42/156     │◀── Résumé filtres actifs (badges)
+│                                     │
+└─────────────────────────────────────┘
+```
+
+---
+
+#### 1.3 Comportement de l'Icône
+
+| État | Apparence | Description |
+|------|-----------|-------------|
+| **Aucun filtre** | ⚙️ gris | Pas de filtres appliqués |
+| **Filtres actifs** | ⚙️ bleu + point | Des filtres sont appliqués |
+| **Hover** | ⚙️ + tooltip | Affiche "Configurer les filtres" |
+
+#### 1.4 Éléments de la Popup
+
+| Zone | Contenu | Interaction |
+|------|---------|-------------|
+| **Header** | Titre "Filtres CA" + bouton fermer [✕] | Ferme sans appliquer |
+| **Période** | 2 date pickers + raccourcis | Sélection de dates |
+| **Clients** | Recherche + liste checkboxes | Multi-sélection |
+| **Résumé** | Compteur clients + CA prévisualisé | Lecture seule |
+| **Footer** | Boutons Réinitialiser / Appliquer | Actions |
+
+#### 1.5 Flux Utilisateur
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  Dashboard      │     │    Popup        │     │  Dashboard      │
+│  affiché        │────▶│    ouverte      │────▶│  mis à jour     │
+│                 │     │                 │     │                 │
+│  Clic sur ⚙️    │     │  Configuration  │     │  Nouvelles      │
+│                 │     │  des filtres    │     │  valeurs        │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+                              │
+                              │ Clic "Appliquer"
+                              ▼
+                        ┌─────────────────┐
+                        │  API appelée    │
+                        │  avec filtres   │
+                        │  ?start_date=   │
+                        │  &end_date=     │
+                        │  &clients=      │
+                        └─────────────────┘
+```
+
+---
+
+### Proposition 2 : API Backend
+
+#### 2.1 Modification de l'endpoint `/api/transport/stats`
+
+**Nouvelle signature :**
+```
+GET /api/transport/stats?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&clients=client1,client2,client3
+```
+
+**Paramètres :**
+
+| Paramètre | Type | Obligatoire | Description |
+|-----------|------|-------------|-------------|
+| `start_date` | string (YYYY-MM-DD) | Non | Date de début de la période |
+| `end_date` | string (YYYY-MM-DD) | Non | Date de fin de la période |
+| `clients` | string (CSV) | Non | Liste des noms de clients séparés par virgules |
+
+**Exemple de requête :**
+```bash
+curl "http://localhost:8000/api/transport/stats?start_date=2025-01-01&end_date=2025-06-30&clients=BIANCHI%20TRASPORTI,SALVAT%20LOGISTICA"
+```
+
+#### 2.2 Nouvel endpoint pour lister les clients
+
+```
+GET /api/transport/clients
+```
+
+**Réponse :**
+```json
+{
+    "clients": [
+        { "name": "BIANCHI TRASPORTI", "ca_total": 160907.39, "nb_envois": 1234 },
+        { "name": "SALVAT LOGISTICA", "ca_total": 30076.06, "nb_envois": 456 },
+        { "name": "LABORATOIRES ASEPTA", "ca_total": 18138.01, "nb_envois": 234 }
+    ],
+    "total_clients": 156
+}
+```
+
+#### 2.3 Code Backend Proposé
+
+**Endpoint stats avec filtres :**
+```python
+@router.get("/transport/stats")
+def get_transport_stats(
+    db: Session = Depends(get_db),
+    start_date: Optional[str] = Query(None, description="Date début YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="Date fin YYYY-MM-DD"),
+    clients: Optional[str] = Query(None, description="Clients séparés par virgules")
+):
+    query = db.query(
+        func.sum(TransportEntry.montant_net_ht).label('ca_total'),
+        func.sum(TransportEntry.marge_brute).label('marge_total'),
+        func.sum(TransportEntry.poids_kg).label('poids_total'),
+        func.count(TransportEntry.id).label('nb_envois')
+    )
+
+    # Filtre par période
+    if start_date:
+        query = query.filter(TransportEntry.date_recepisse >= start_date)
+    if end_date:
+        query = query.filter(TransportEntry.date_recepisse <= end_date)
+
+    # Filtre par clients
+    if clients:
+        client_list = [c.strip() for c in clients.split(',')]
+        query = query.filter(TransportEntry.donneur_ordre.in_(client_list))
+
+    stats = query.first()
+    # ... suite du traitement
+```
+
+**Endpoint liste des clients :**
+```python
+@router.get("/transport/clients")
+def get_transport_clients(db: Session = Depends(get_db)):
+    results = db.query(
+        TransportEntry.donneur_ordre.label('name'),
+        func.sum(TransportEntry.montant_net_ht).label('ca_total'),
+        func.count(TransportEntry.id).label('nb_envois')
+    ).filter(
+        TransportEntry.donneur_ordre.isnot(None)
+    ).group_by(
+        TransportEntry.donneur_ordre
+    ).order_by(
+        func.sum(TransportEntry.montant_net_ht).desc()
+    ).all()
+
+    return {
+        "clients": [{"name": r.name, "ca_total": r.ca_total, "nb_envois": r.nb_envois} for r in results],
+        "total_clients": len(results)
+    }
+```
+
+---
+
+### Proposition 3 : Composants Frontend
+
+#### 3.1 Composant DateRangePicker
+
+```typescript
+interface DateRangePickerProps {
+    startDate: Date | null;
+    endDate: Date | null;
+    onChange: (start: Date | null, end: Date | null) => void;
+    presets?: Array<{ label: string; days: number }>;
+}
+
+// Presets suggérés
+const DATE_PRESETS = [
+    { label: "7 jours", days: 7 },
+    { label: "30 jours", days: 30 },
+    { label: "90 jours", days: 90 },
+    { label: "Cette année", days: -1 },  // Spécial: depuis 01/01
+    { label: "Tout", days: 0 }           // Spécial: aucun filtre
+];
+```
+
+#### 3.2 Composant ClientSelector
+
+```typescript
+interface Client {
+    name: string;
+    ca_total: number;
+    nb_envois: number;
+    selected: boolean;
+}
+
+interface ClientSelectorProps {
+    clients: Client[];
+    selectedClients: string[];
+    onSelectionChange: (selected: string[]) => void;
+    showCaTotal?: boolean;  // Afficher le CA à côté du nom
+}
+
+// Fonctionnalités :
+// - Recherche par nom (filtre local)
+// - Select All / Deselect All
+// - Tri par CA ou par nom
+// - Affichage du résumé (X sur Y sélectionnés)
+```
+
+#### 3.3 Hook de gestion des filtres
+
+```typescript
+interface TransportFilters {
+    startDate: string | null;
+    endDate: string | null;
+    clients: string[];
+}
+
+function useTransportFilters() {
+    const [filters, setFilters] = useState<TransportFilters>({
+        startDate: null,
+        endDate: null,
+        clients: []
+    });
+
+    const buildQueryString = () => {
+        const params = new URLSearchParams();
+        if (filters.startDate) params.append('start_date', filters.startDate);
+        if (filters.endDate) params.append('end_date', filters.endDate);
+        if (filters.clients.length > 0) params.append('clients', filters.clients.join(','));
+        return params.toString();
+    };
+
+    return { filters, setFilters, buildQueryString };
+}
+```
+
+---
+
+### Proposition 4 : Requêtes SQL avec Filtres
+
+#### 4.1 Stats globales filtrées
+
+```sql
+SELECT
+    SUM(montant_net_ht) AS ca_total,
+    SUM(marge_brute) AS marge_total,
+    SUM(poids_kg) AS poids_total,
+    COUNT(id) AS nb_envois
+FROM transport_entries
+WHERE date_recepisse >= '2025-01-01'
+  AND date_recepisse <= '2025-06-30'
+  AND donneur_ordre IN ('BIANCHI TRASPORTI', 'SALVAT LOGISTICA');
+```
+
+#### 4.2 Évolution mensuelle filtrée
+
+```sql
+SELECT
+    strftime('%Y-%m', date_recepisse) AS month,
+    SUM(montant_net_ht) AS revenue,
+    SUM(marge_brute) AS margin
+FROM transport_entries
+WHERE date_recepisse >= '2025-01-01'
+  AND date_recepisse <= '2025-06-30'
+  AND donneur_ordre IN ('BIANCHI TRASPORTI', 'SALVAT LOGISTICA')
+GROUP BY month
+ORDER BY month ASC;
+```
+
+#### 4.3 Index recommandés pour la performance
+
+```sql
+-- Index composé pour les requêtes filtrées fréquentes
+CREATE INDEX idx_transport_date_client
+ON transport_entries(date_recepisse, donneur_ordre);
+
+-- Index pour la liste des clients
+CREATE INDEX idx_transport_donneur
+ON transport_entries(donneur_ordre);
+```
+
+---
+
+### Proposition 5 : Comportements UX
+
+#### 5.1 États de l'interface
+
+| État | Description | Affichage |
+|------|-------------|-----------|
+| **Aucun filtre** | Toutes les données | Badge "Tout" grisé |
+| **Période active** | Dates sélectionnées | Badge bleu "01/01 → 30/06" |
+| **Clients filtrés** | Sélection partielle | Badge vert "42/156 clients" |
+| **Combiné** | Période + Clients | 2 badges actifs |
+
+#### 5.2 Interactions
+
+| Action | Comportement |
+|--------|--------------|
+| Clic "Appliquer" | Recharge les données avec filtres, ferme le panneau |
+| Clic "Réinitialiser" | Supprime tous les filtres, revient à "Tout" |
+| Clic raccourci période | Applique immédiatement la période |
+| Clic "Tous" (clients) | Coche tous les clients |
+| Clic "Aucun" (clients) | Décoche tous les clients |
+| Recherche client | Filtre la liste en temps réel (pas les données) |
+
+#### 5.3 Persistance des filtres
+
+```typescript
+// Sauvegarder les filtres dans localStorage
+localStorage.setItem('transport_filters', JSON.stringify(filters));
+
+// Options de persistance :
+// - Par session (sessionStorage)
+// - Permanent (localStorage)
+// - URL (query params pour partage)
+```
+
+---
+
+### Proposition 6 : Tableau Comparatif des Options UI
+
+| Critère | Option A (Sidebar) | Option B (Header) | Option C (Modal) |
+|---------|-------------------|-------------------|------------------|
+| **Visibilité** | Toujours visible | Résumé visible | Cachée |
+| **Espace écran** | Réduit le dashboard | Minimal | Aucun impact |
+| **Accès rapide** | ✅ Excellent | ✅ Bon | ⚠️ 1 clic requis |
+| **Mobile** | ⚠️ Problématique | ✅ Bon | ✅ Excellent |
+| **Complexité** | Moyenne | Faible | Moyenne |
+| **Recommandation** | Desktop uniquement | **Recommandé** | Filtres complexes |
+
+**Recommandation finale : Option B (Header) + Option C (Modal) pour les filtres avancés**
+
+---
+
+### Proposition 7 : Plan d'Implémentation Filtres
+
+#### Phase A : Backend (Priorité haute)
+- [ ] Ajouter paramètres `start_date`, `end_date` à `/transport/stats`
+- [ ] Ajouter paramètre `clients` à `/transport/stats`
+- [ ] Créer endpoint `/transport/clients`
+- [ ] Appliquer les mêmes filtres à `/transport/graph/revenue`
+- [ ] Appliquer les mêmes filtres à `/transport/graph/distribution`
+- [ ] Ajouter index SQL pour performance
+
+#### Phase B : Frontend - Composants (Priorité haute)
+- [ ] Créer composant `DateRangePicker`
+- [ ] Créer composant `ClientSelector` avec checkboxes
+- [ ] Créer hook `useTransportFilters`
+
+#### Phase C : Frontend - Intégration (Priorité moyenne)
+- [ ] Intégrer barre de filtres dans TransportDashboard
+- [ ] Connecter filtres aux appels API
+- [ ] Ajouter badges de filtres actifs
+- [ ] Implémenter persistance localStorage
+
+### Phase 7 : Implémentation Réalisée - Filtres de Données ✅
+
+Cette fonctionnalité permet de filtrer l'ensemble des données du Dashboard Transport par Période et par Clients.
+
+#### 1. Architecture Technique
+
+**Backend (Python/FastAPI)**
+- **Endpoints mis à jour** : Les endpoints `/api/transport/stats`, `/api/transport/graph/revenue`, et `/api/transport/graph/distribution` acceptent désormais les paramètres `start_date`, `end_date`, et `clients` (CSV).
+- **Nouvel Endpoint** : `/api/transport/clients` fournit la liste des clients triée par chiffre d'affaires.
+- **Sécurité** : Gestion des cas limites (aucun résultat) pour renvoyer des structures JSON valides (évitant les crashs frontend).
+
+**Frontend (React/Electron)**
+- **Hook Personnalisé** : `useTransportFilters` gère l'état global des filtres et la génération des query strings.
+- **Composants UI** :
+  - `TransportFilterModal` : Modale centrale de configuration.
+  - `DateRangePicker` : Sélecteur de date avec pré-réglages (7j, 30j, Année).
+  - `ClientSelector` : Liste des clients avec recherche et sélection multiple.
+- **Intégration** : Bouton de configuration (⚙️) ajouté sur la carte "Chiffre d'Affaires".
+
+#### 2. Workflow Utilisateur
+1. L'utilisateur clique sur l'icône ⚙️ dans le header.
+2. La modale s'ouvre avec les options de filtrage.
+3. Après sélection, le clic sur "Appliquer" ferme la modale et recharge tous les graphiques.
+4. Les données sont filtrées côté serveur (SQLAlchemy) pour une performance optimale.
+
+---
+
 ## 🎯 Plan d'Implémentation
 
-### Phase 1 : KPIs Essentiels (Semaine 1)
+### Phase 1 : KPIs Essentiels ✅ Implémenté
 
 - [x] CA Total & Mensuel
 - [x] Marge Brute & Taux de Marge
 - [x] Nombre d'Envois
 - [x] Top 10 Clients
-- [x] CA par Pays
+- [x] Tonnage
+- [x] Panier Moyen
 
-### Phase 2 : KPIs Opérationnels (Semaine 2)
+### Phase 2 : KPIs Géographiques (À faire)
 
-- [ ] Tonnage & UM
+- [ ] CA par Pays (endpoint existe: `?type=country`)
+- [ ] Répartition géographique (PieChart)
+- [ ] Routes principales
+
+### Phase 3 : KPIs Avancés (À faire)
+
 - [ ] Délais moyens
-- [ ] Performance par Route
-- [ ] Coûts détaillés
-
-### Phase 3 : KPIs Avancés (Semaine 3)
-
-- [ ] Segmentation RFM
-- [ ] Prédictions
+- [ ] Performance par Correspondant
+- [ ] Segmentation clients
 - [ ] Alertes automatiques
-- [ ] Analyses croisées
 
 ---
 

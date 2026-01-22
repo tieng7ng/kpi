@@ -34,3 +34,58 @@ class UnifiedKPI(Base):
     
     source_file_id = Column(Integer, ForeignKey("raw_imports.id"))
     source_file = relationship("RawImport")
+
+class TransportEntry(Base):
+    __tablename__ = "transport_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # --- Dates & Identification ---
+    # Date du bordereau / récépissé (champ 1)
+    date_recepisse = Column(DateTime, index=True, nullable=True)
+    # Date d'exploitation (champ 2)
+    date_exploitation = Column(DateTime, nullable=True)
+    # Date d'arrivage (champ 8)
+    date_arrivage = Column(DateTime, nullable=True)
+    # Date de départ (champ 10)
+    date_depart = Column(DateTime, nullable=True)
+    
+    # Identifiants
+    num_recepisse = Column(String, nullable=True) # champ 3
+    num_bordereau = Column(String, index=True, nullable=True) # champ 9, important pour déduplication
+    bordereau_edi = Column(String, nullable=True) # champ 7
+    
+    # --- Donneur d'Ordre & Client ---
+    donneur_ordre = Column(String, index=True, nullable=True) # champ 11
+    type_donneur_ordre = Column(String, nullable=True) # champ 12
+    correspondant = Column(String, nullable=True) # champ 23
+    
+    # --- Géographie & Route ---
+    pays_depart = Column(String, index=True, nullable=True) # champ 13 (Expéditeur Pays)
+    pays_arrivee = Column(String, index=True, nullable=True) # champ 14 (Pays destinataire)
+    pays_remettant = Column(String, nullable=True) # champ 22
+    code_ligne_depart = Column(String, nullable=True) # champ 5
+    code_ligne_arrivee = Column(String, nullable=True) # champ 25
+    
+    # --- Produit & Service ---
+    libelle_produit = Column(String, nullable=True) # champ 4
+    type_ligne_depart = Column(String, nullable=True) # champ 24
+    incoterm = Column(String, nullable=True) # champ 21
+    
+    # --- Volumétrie ---
+    nombre_um = Column(Float, default=0.0) # champ 15
+    poids_kg = Column(Float, default=0.0) # champ 16
+    
+    # --- Financier (Montants) ---
+    montant_net_ht = Column(Float, default=0.0) # champ 17 (CA)
+    montant_achat_st = Column(Float, default=0.0) # champ 18
+    montant_achat_st_hors_interne = Column(Float, default=0.0) # champ 19
+    cout_interne = Column(Float, default=0.0) # champ 20
+    
+    # --- Champs Calculés / Dérivés (Stockés pour perf) ---
+    marge_brute = Column(Float, default=0.0) # (CA - Cout ST - Cout Interne)
+    taux_marge = Column(Float, default=0.0)
+    
+    # --- Méta ---
+    source_file_id = Column(Integer, ForeignKey("raw_imports.id"), index=True)
+    source_file = relationship("RawImport")
