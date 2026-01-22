@@ -4,3 +4,4 @@ pandas>=2.2.0
 openpyxl>=3.1.2
 sqlalchemy>=2.0.25
 python-multipart>=0.0.6
+pydantic<2.0.0
