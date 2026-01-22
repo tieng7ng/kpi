@@ -3,8 +3,17 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from .models import Base
 
+import sys
+
 # Ensure data directory exists
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+if getattr(sys, 'frozen', False):
+    # PyInstaller Bundle - Use executable directory
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    # Development - Use source directory
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+DATA_DIR = os.path.join(BASE_DIR, "data")
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
