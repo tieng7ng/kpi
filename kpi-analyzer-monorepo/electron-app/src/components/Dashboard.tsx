@@ -59,22 +59,24 @@ export function Dashboard() {
         localStorage.setItem('kpi_dashboard_layout', JSON.stringify(charts));
     }, [charts]);
 
-    // Check Transport Data
-    useEffect(() => {
-        fetch(`${API_URL}/transport/stats`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.count > 0) {
-                    setHasTransportData(true);
-                    // Optional: Auto-switch logic could go here
-                }
-            })
-            .catch(err => console.error("Error checking transport stats", err));
-    }, []);
+    const checkTransportData = async () => {
+        try {
+            const res = await fetch(`${API_URL}/transport/stats`);
+            const data = await res.json();
+            if (data.count > 0) {
+                setHasTransportData(true);
+            }
+        } catch (err) {
+            console.error("Error checking transport stats", err);
+        }
+    };
 
     const fetchData = async () => {
         setLoading(true);
         try {
+            // Check Transport Data
+            await checkTransportData();
+
             const res = await fetch(`${API_URL}/kpi/summary`);
             const data = await res.json();
 
