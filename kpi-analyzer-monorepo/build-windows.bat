@@ -266,6 +266,7 @@ echo    - resources/engine.exe:
 if exist "resources\engine.exe" (echo      [OK]) else (echo      [MANQUANT])
 echo.
 
+set CSC_IDENTITY_AUTO_DISCOVERY=false
 call npx electron-builder --win
 if errorlevel 1 (
     echo    [ERREUR] Echec du packaging Electron Builder

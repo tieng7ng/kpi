@@ -31,7 +31,9 @@
       {
         "from": "./resources/",
         "to": ".",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "asar": false,
@@ -39,9 +41,13 @@
       "target": [
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
-      ]
+      ],
+      "forceCodeSigning": false,
+      "verifyUpdateCodeSignature": false
     },
     "mac": {
       "target": "dmg"
