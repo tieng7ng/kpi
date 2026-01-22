@@ -36,4 +36,9 @@ if __name__ == "__main__":
         port = int(sys.argv[1])
     
     print(f"Starting engine on port {port}")
+    
+    # DEBUG: Print Database Path
+    from database.connection import DATA_DIR
+    print(f"DATABASE PATH: {DATA_DIR}")
+    
     uvicorn.run(app, host="127.0.0.1", port=port)
