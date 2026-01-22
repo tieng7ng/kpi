@@ -61,10 +61,15 @@ export function Dashboard() {
 
     const checkTransportData = async () => {
         try {
+            console.log("Checking transport stats...");
             const res = await fetch(`${API_URL}/transport/stats`);
             const data = await res.json();
+            console.log("Transport stats received:", data);
             if (data.count > 0) {
+                console.log("Setting hasTransportData = TRUE");
                 setHasTransportData(true);
+            } else {
+                console.log("Count is 0, hasTransportData = FALSE");
             }
         } catch (err) {
             console.error("Error checking transport stats", err);
@@ -300,6 +305,12 @@ export function Dashboard() {
                             >
                                 Transport
                             </button>
+                        </div>
+                    )}
+                    {/* DEBUG ONLY: Remove after fix */}
+                    {!hasTransportData && (
+                        <div className="text-xs text-red-400 border border-red-200 p-1 rounded">
+                            No Transport Data Check.
                         </div>
                     )}
 
