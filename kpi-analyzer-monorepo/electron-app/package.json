@@ -28,10 +28,20 @@
       "package.json"
     ],
     "extraResources": [
-      "./resources/**"
+      {
+        "from": "./resources/",
+        "to": ".",
+        "filter": ["**/*"]
+      }
     ],
+    "asar": false,
     "win": {
-      "target": "portable"
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
     },
     "mac": {
       "target": "dmg"
