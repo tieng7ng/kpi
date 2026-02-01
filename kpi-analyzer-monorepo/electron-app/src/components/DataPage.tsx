@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { DropZone } from './DropZone';
 import { ArrowLeft, FileSpreadsheet, HardDrive, Calendar, FileText, Trash2, Download, RotateCcw, AlertTriangle } from 'lucide-react';
+import { authService } from '../services/auth';
 
-const API_URL = 'http://localhost:8000/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 interface ImportedFile {
     id: number;
@@ -25,7 +26,9 @@ export const DataPage: React.FC<DataPageProps> = ({ onBack }) => {
     const fetchFiles = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API_URL}/upload/files`);
+            const res = await fetch(`${API_URL}/upload/files`, {
+                headers: authService.getAuthHeaders()
+            });
             if (res.ok) {
                 const data = await res.json();
                 setFiles(data);
@@ -40,7 +43,10 @@ export const DataPage: React.FC<DataPageProps> = ({ onBack }) => {
     const handleReset = async () => {
         setResetting(true);
         try {
-            const res = await fetch(`${API_URL}/reset`, { method: 'POST' });
+            const res = await fetch(`${API_URL}/reset`, {
+                method: 'POST',
+                headers: authService.getAuthHeaders()
+            });
             if (res.ok) {
                 // Vider le localStorage du dashboard
                 localStorage.removeItem('kpi_dashboard_layout');

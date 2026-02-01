@@ -3,6 +3,7 @@ import { Activity, Box, TrendingUp, DollarSign, Settings } from "lucide-react";
 import { KPIChart } from "../KPIChart";
 import { useTransportFilters } from '../../hooks/useTransportFilters';
 import { TransportFilterModal } from './filters/TransportFilterModal';
+import { authService } from '../../services/auth';
 
 interface TransportStats {
     count: number;
@@ -13,7 +14,7 @@ interface TransportStats {
     margin_rate: number;
 }
 
-const API_URL = "http://localhost:8000/api";
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 export function TransportDashboard() {
     const [stats, setStats] = useState<TransportStats | null>(null);
@@ -31,11 +32,12 @@ export function TransportDashboard() {
         try {
             const queryString = buildQueryString();
             const queryURL = queryString ? `?${queryString}` : '';
+            const headers = authService.getAuthHeaders();
 
             const [statsRes, revRes, clientRes] = await Promise.all([
-                fetch(`${API_URL}/transport/stats${queryURL}`),
-                fetch(`${API_URL}/transport/graph/revenue${queryURL}`),
-                fetch(`${API_URL}/transport/graph/distribution?type=client&${queryString}`)
+                fetch(`${API_URL}/transport/stats${queryURL}`, { headers }),
+                fetch(`${API_URL}/transport/graph/revenue${queryURL}`, { headers }),
+                fetch(`${API_URL}/transport/graph/distribution?type=client&${queryString}`, { headers })
             ]);
 
             const statsData = await statsRes.json();

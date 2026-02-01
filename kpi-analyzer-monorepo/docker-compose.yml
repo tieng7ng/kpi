@@ -9,7 +9,7 @@ services:
       - ./data:/app/data
     environment:
       - DEBUG=false
-      - ALLOWED_ORIGINS=https://votre-domaine.com,https://www.votre-domaine.com
+      - ALLOWED_ORIGINS=http://localhost,http://127.0.0.1,http://localhost:80
     networks:
       - kpi-network
 
@@ -19,7 +19,6 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
     depends_on:
       - backend
     networks:

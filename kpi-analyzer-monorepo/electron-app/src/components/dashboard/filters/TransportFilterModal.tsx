@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { X, Filter } from 'lucide-react';
 import { DateRangePicker } from './DateRangePicker';
 import { ClientSelector } from './ClientSelector';
+import { authService } from '../../../services/auth';
 import type { TransportFilters } from '../../../hooks/useTransportFilters';
 
 interface TransportFilterModalProps {
@@ -11,7 +12,7 @@ interface TransportFilterModalProps {
     onApply: (filters: TransportFilters) => void;
 }
 
-const API_URL = 'http://localhost:8000/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 export const TransportFilterModal: React.FC<TransportFilterModalProps> = ({
     isOpen,
@@ -37,7 +38,9 @@ export const TransportFilterModal: React.FC<TransportFilterModalProps> = ({
         if (clientsList.length > 0) return; // Cache simple
         setLoadingClients(true);
         try {
-            const res = await fetch(`${API_URL}/transport/clients`);
+            const res = await fetch(`${API_URL}/transport/clients`, {
+                headers: authService.getAuthHeaders()
+            });
             const data = await res.json();
             if (data.clients) {
                 setClientsList(data.clients);

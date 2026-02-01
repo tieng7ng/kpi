@@ -1,8 +1,9 @@
 import React, { useCallback, useState } from 'react';
 import { UploadCloud, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { authService } from '../services/auth';
 
-const API_URL = 'http://localhost:8000/api'; // In prod, this should be dynamic
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 export const DropZone: React.FC = () => {
     const [isDragActive, setIsDragActive] = useState(false);
@@ -34,6 +35,7 @@ export const DropZone: React.FC = () => {
         try {
             const response = await fetch(`${API_URL}/upload`, {
                 method: 'POST',
+                headers: authService.getAuthHeaders(),
                 body: formData,
             });
 

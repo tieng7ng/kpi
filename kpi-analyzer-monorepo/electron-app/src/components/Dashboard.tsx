@@ -6,10 +6,10 @@ import { ChartConfigModal } from './dashboard/ChartConfigModal';
 import { ChartDetailModal } from './dashboard/ChartDetailModal';
 import { DataPage } from './DataPage';
 import { TransportDashboard } from './dashboard/TransportDashboard';
-// import { Card } from "@/components/ui/card"; // Removing potential missing import
+import { authService } from '../services/auth';
 import type { ChartConfig } from '../types/dashboard';
 
-const API_URL = 'http://localhost:8000/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Config par défaut si localStorage est vide
 const DEFAULT_CHARTS: ChartConfig[] = [
@@ -62,7 +62,9 @@ export function Dashboard() {
     const checkTransportData = async () => {
         try {
             console.log("Checking transport stats...");
-            const res = await fetch(`${API_URL}/transport/stats`);
+            const res = await fetch(`${API_URL}/transport/stats`, {
+                headers: authService.getAuthHeaders()
+            });
             const data = await res.json();
             console.log("Transport stats received:", data);
             if (data.count > 0) {
@@ -82,7 +84,9 @@ export function Dashboard() {
             // Check Transport Data
             await checkTransportData();
 
-            const res = await fetch(`${API_URL}/kpi/summary`);
+            const res = await fetch(`${API_URL}/kpi/summary`, {
+                headers: authService.getAuthHeaders()
+            });
             const data = await res.json();
 
             if (Array.isArray(data)) {
