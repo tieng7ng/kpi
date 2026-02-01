@@ -1,31 +1,12 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from database.connection import init_db
-from api import endpoints
-import uvicorn
-import sys
+from api import endpoints, auth_endpoints
 
-from contextlib import asynccontextmanager
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup: Initialize DB
-    init_db()
-    yield
-    # Shutdown: Clean up if needed (nothing for now)
-
-app = FastAPI(title="KPI Analyzer Engine", lifespan=lifespan)
-
-# CORS - Allow localhost for Electron
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"], # Allow all for dev (Vite uses random ports)
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# ... (omitted)
 
 app.include_router(endpoints.router, prefix="/api")
+app.include_router(auth_endpoints.router, prefix="/api")
 
 if __name__ == "__main__":
     # Electron will spawn this process. 

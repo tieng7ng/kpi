@@ -3,7 +3,8 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from database.connection import get_db
-from database.models import RawImport, UnifiedKPI, TransportEntry
+from database.models import RawImport, UnifiedKPI, TransportEntry, User
+from auth.auth_service import get_current_user
 from ingestion import process_transport_file
 import shutil
 import os
@@ -18,7 +19,11 @@ def read_root():
     return {"status": "ok", "engine": "KPI Analyzer Python Core"}
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_file(
+    file: UploadFile = File(...), 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     content = await file.read()
     
     # Calculate SHA256 checksum
@@ -123,7 +128,10 @@ async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db
     return {"filename": file.filename, "id": db_file.id, "status": "Imported"}
 
 @router.get("/kpi/summary")
-def get_kpi_summary(db: Session = Depends(get_db)):
+def get_kpi_summary(
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
     kpis = db.query(UnifiedKPI).all()
     
     # Si des KPIs "Generic" existent, on les renvoie normalement
@@ -177,14 +185,20 @@ def get_kpi_summary(db: Session = Depends(get_db)):
     return []
 
 @router.get("/upload/files")
-def list_uploaded_files(db: Session = Depends(get_db)):
+def list_uploaded_files(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     files = db.query(RawImport).order_by(RawImport.import_date.desc()).all()
     return [{
         "id": f.id, "filename": f.filename, "import_date": f.import_date, "status": f.status, "checksum": f.checksum
     } for f in files]
 
 @router.post("/reset")
-def reset_all_data(db: Session = Depends(get_db)):
+def reset_all_data(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     try:
         db.query(UnifiedKPI).delete()
         db.query(TransportEntry).delete() # Nouveau
@@ -212,6 +226,7 @@ def apply_filters(query, start_date=None, end_date=None, clients=None):
 @router.get("/transport/stats")
 def get_transport_stats(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     clients: Optional[str] = Query(None)
@@ -261,6 +276,7 @@ def get_transport_stats(
 @router.get("/transport/graph/revenue")
 def get_transport_revenue_graph(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     clients: Optional[str] = Query(None)
@@ -328,6 +344,7 @@ def get_transport_revenue_graph(
 def get_transport_distribution_graph(
     type: str = "client", 
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     clients: Optional[str] = Query(None)
@@ -362,7 +379,10 @@ def get_transport_distribution_graph(
         return []
 
 @router.get("/transport/clients")
-def get_transport_clients(db: Session = Depends(get_db)):
+def get_transport_clients(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     try:
         results = db.query(
             TransportEntry.donneur_ordre.label('name'),

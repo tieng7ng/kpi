@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, LargeBinary, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, DateTime, LargeBinary, ForeignKey, Boolean
 from sqlalchemy.orm import DeclarativeBase, relationship
 from datetime import datetime
 
@@ -89,3 +89,15 @@ class TransportEntry(Base):
     # --- Méta ---
     source_file_id = Column(Integer, ForeignKey("raw_imports.id"), index=True)
     source_file = relationship("RawImport")
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    email = Column(String(100), unique=True, nullable=True)
+    hashed_password = Column(String(255), nullable=False)
+    is_active = Column(Boolean, default=True)
+    is_admin = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime, nullable=True)

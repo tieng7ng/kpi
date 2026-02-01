@@ -12,3 +12,5 @@ Lancer le backend
 Requete SQL
   python query_db.py "SELECT * FROM unified_kpi LIMIT 5"
 
+convertir MD en DOCX
+  pandoc nom_du_fichier.md -o resultat.docx
