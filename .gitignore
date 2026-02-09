@@ -12,50 +12,6 @@ test_data/
 # === Binary / Electron engine ===
 kpi-analyzer-monorepo/electron-app/resources/engine
 
-# === Documents / Devis / Presentations (root) ===
-ARCHITECTURE_SUPERSET_DETAILLEE.md
-AUDIT_RECOMMANDATION_FINALE.md
-CONVERTIR_EN_PPT.md
-DEVIS_APPLICATION_KPI.docx
-DEVIS_APPLICATION_KPI.md
-DEVIS_EXCEL.csv
-DEVIS_SIMPLIFIE.md
-DIAGNOSTIC_ERREUR_UPLOAD.md
-DOCUMENTATION_TECHNIQUE.md
-EXIGENCES_MATERIELLES.md
-EXPLICATION_TECHNIQUE_DONNEES.md
-GUIDE_UTILISATEUR.md
-GUIDE_UTILISATION_DEVIS.md
-MANUEL_UTILISATION.md
-PLAN_IMPLEMENTATION.md
-PRESENTATION_RESUME.md
-PRESENTATION_SLIDES.md
-PRESENTATION_SOLUTION_VALIDATION.docx
-PRESENTATION_SOLUTION_VALIDATION.md
-PROPOSITION_TECHNIQUE.md
-RAPPORT_AUDIT_CODE.md
-RECOMMANDATION_FINALE.md
-RECOMMANDATION_FINALE_V2.md
-SOLUTIONS_ARCHITECTURALES.md
-SOLUTIONS_UTILISATEUR_NOVICE.md
-util.txt
-
-# === Documents / Devis (monorepo) ===
-kpi-analyzer-monorepo/ANALYSE_KPI_TRANSPORT_EXPORT.md
-kpi-analyzer-monorepo/ANALYSE_KPI_TRANSPORT_IMPORT.md
-kpi-analyzer-monorepo/AUTH_PROPOSALS.md
-kpi-analyzer-monorepo/BUILD_WINDOWS.md
-kpi-analyzer-monorepo/DEPLOYMENT.md
-kpi-analyzer-monorepo/DEPLOYMENT_VPS.md
-kpi-analyzer-monorepo/DEVIS_REALISATION.docx
-kpi-analyzer-monorepo/DEVIS_REALISATION.md
-kpi-analyzer-monorepo/DOCUMENTATION_TECHNIQUE_GRAPHIQUES.md
-kpi-analyzer-monorepo/GUIDE_UTILISATION.md
-kpi-analyzer-monorepo/PLAN_IMPLEMENTATION_DASHBOARD.md
-kpi-analyzer-monorepo/PLAN_INTEGRATION_TRANSPORT.md
-kpi-analyzer-monorepo/PROPOSITION_INTEGRATION_CSV_TRANSPORT.md
-kpi-analyzer-monorepo/PROPOSITION_INTERFACE_GRAPHIQUES.md
-
 # === Debug / utility scripts ===
 kpi-analyzer-monorepo/python-engine/debug_import_transport.py
 kpi-analyzer-monorepo/python-engine/debug_upload.py
