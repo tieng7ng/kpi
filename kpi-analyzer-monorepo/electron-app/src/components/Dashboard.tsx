@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { LayoutDashboard, PlusCircle, Database, TrendingUp, Settings, Plus } from 'lucide-react';
+import { generateUUID } from '../utils/uuid';
 import { DashboardGrid } from './dashboard/DashboardGrid';
 import { ChartCard } from './dashboard/ChartCard';
 import { ChartConfigModal } from './dashboard/ChartConfigModal';
@@ -140,7 +141,7 @@ export function Dashboard() {
 
     const handleAddChart = () => {
         setEditingChart({
-            id: crypto.randomUUID(),
+            id: generateUUID(),
             title: 'Nouveau Graphique',
             type: 'bar',
             indicator: availableIndicators[0] || '',

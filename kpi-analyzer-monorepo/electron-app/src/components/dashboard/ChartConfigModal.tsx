@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { ChartConfig, ChartType } from '../../types/dashboard';
 import { X } from 'lucide-react';
+import { generateUUID } from '../../utils/uuid';
 
 interface ChartConfigModalProps {
     isOpen: boolean;
@@ -54,7 +55,7 @@ export const ChartConfigModal: React.FC<ChartConfigModalProps> = ({ isOpen, onCl
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave({
-            id: initialConfig ? initialConfig.id : crypto.randomUUID(),
+            id: initialConfig ? initialConfig.id : generateUUID(),
             title: title || 'Nouveau Graphique',
             type,
             indicator: selectedIndicator,
